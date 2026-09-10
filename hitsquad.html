@@ -235,6 +235,55 @@
   }
   .hidden{ display:none !important; }
 </style>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+  import {
+    getFirestore, doc, setDoc, onSnapshot, serverTimestamp,
+    enableIndexedDbPersistence
+  } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+  import {
+    getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBtPJRWI4KrEN7uWTYiEUtCihE4e3W8xZ0",
+    authDomain: "play-charts-yms-hse.firebaseapp.com",
+    projectId: "play-charts-yms-hse",
+    storageBucket: "play-charts-yms-hse.firebasestorage.app",
+    messagingSenderId: "495413810654",
+    appId: "1:495413810654:web:a66c64388af346fd77b94f"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  enableIndexedDbPersistence(db).catch(function(){ /* ignore: unsupported in this browser/tab */ });
+
+  const GAME_DOC = doc(db, 'games', 'hitsquad');
+
+  window.FB = {
+    signIn: function(email, password){
+      return signInWithEmailAndPassword(auth, email, password);
+    },
+    signOutCoach: function(){
+      return signOut(auth);
+    },
+    onAuthChange: function(cb){
+      onAuthStateChanged(auth, cb);
+    },
+    subscribeGame: function(cb){
+      return onSnapshot(GAME_DOC, function(snap){
+        cb(snap.exists() ? snap.data() : null);
+      }, function(err){
+        console.error('Firestore snapshot error', err);
+      });
+    },
+    saveGame: function(data){
+      return setDoc(GAME_DOC, Object.assign({}, data, { updatedAt: serverTimestamp() }));
+    }
+  };
+</script>
 </head>
 <body>
 <div id="app">
@@ -249,6 +298,7 @@
       <div class="tab" data-tab="log">Log <span class="count" id="tabCount">0</span></div>
     </div>
     <div id="saveStatus" style="font-size:10px; color:#D6685A; text-align:right; padding:4px 2px 8px 2px; min-height:14px;"></div>
+    <div id="authBar" style="padding:0 2px 10px 2px;"></div>
   </header>
   <main id="main"></main>
   <div id="undoBar"><div class="inner" id="undoInner">
@@ -274,10 +324,6 @@ window.onerror = function(msg, url, line, col, err){
   var ALIGNMENT_OPTIONS = ['Flip','Deuce','H Back','Y Back','Z Back'];
   var MOTION_OPTIONS = ['H Jet','Y Jet','X Jet','Z Jet'];
 
-  var STORAGE_KEY = 'plays';
-  var META_KEY = 'game-meta';
-  var OPP_KEY = 'opp-events';
-
   var plays = [];
   var meta = { gameLabel: '' };
   var oppEvents = [];
@@ -286,6 +332,11 @@ window.onerror = function(msg, url, line, col, err){
   var clearArmed = false;
   var clearArmTimer = null;
   var undoTimer = null;
+  var isCoach = false;
+  var authReady = false;
+  var lastLoadedFromRemote = false;
+  var signInFormOpen = false;
+  var signInError = '';
 
   function getOppScore(){
     return oppEvents.reduce(function(s, e){ return s + e.points; }, 0);
@@ -604,84 +655,137 @@ window.onerror = function(msg, url, line, col, err){
     return n===1?'1st':n===2?'2nd':n===3?'3rd':'4th';
   }
 
-  // ---------- storage ----------
-  // This file runs standalone on your device, so data is saved with the
-  // browser's built-in local storage — no network or Claude connection
-  // needed. It's tied to this file on this device/browser: it survives
-  // closing the tab, restarting the phone, and airplane mode, but it
-  // won't follow you to a different phone or a different browser. Export
-  // CSV is still the way to get a permanent copy off the device.
+  // ---------- storage (Firebase Firestore, live-synced) ----------
+  // Data lives in Firestore now, not just this device. Anyone with the
+  // link sees the game update live (read access is open). Only a
+  // signed-in coach can actually save changes — enforced both by the
+  // Firestore security rules and by hiding the controls here.
 
   function loadAll(){
-    try{
-      try{
-        var raw = localStorage.getItem(STORAGE_KEY);
-        if(raw) plays = JSON.parse(raw);
-      }catch(e){ plays = []; }
-      try{
-        var mraw = localStorage.getItem(META_KEY);
-        if(mraw) meta = JSON.parse(mraw);
-      }catch(e){ /* no meta yet */ }
-      try{
-        var oraw = localStorage.getItem(OPP_KEY);
-        if(oraw) oppEvents = JSON.parse(oraw);
-      }catch(e){ oppEvents = []; }
+    window.FB.onAuthChange(function(user){
+      isCoach = !!user;
+      authReady = true;
+      updateAuthUI();
+      render();
+    });
+
+    window.FB.subscribeGame(function(data){
+      if(data){
+        plays = data.plays || [];
+        oppEvents = data.oppEvents || [];
+        meta = data.meta || { gameLabel: '' };
+      } else {
+        plays = [];
+        oppEvents = [];
+        meta = { gameLabel: '' };
+      }
       document.getElementById('gameLabel').value = meta.gameLabel || '';
       current = freshPlay();
-    } finally {
+      lastLoadedFromRemote = true;
       render();
-    }
+    });
+
+    render();
   }
 
-  function savePlays(){
-    try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(plays));
-      updateStatusBadge(true);
-    }catch(e){
-      updateStatusBadge(false);
+  function syncGame(){
+    if(!isCoach){
+      updateStatusBadge(false, 'Sign in to save changes');
+      return;
     }
+    window.FB.saveGame({ plays: plays, oppEvents: oppEvents, meta: meta })
+      .then(function(){ updateStatusBadge(true); })
+      .catch(function(err){
+        console.error('Save failed', err);
+        updateStatusBadge(false, 'Save failed — check connection');
+      });
   }
-  function saveMeta(){
-    try{
-      localStorage.setItem(META_KEY, JSON.stringify(meta));
-    }catch(e){
-      updateStatusBadge(false);
-    }
-  }
-  function saveOppEvents(){
-    try{
-      localStorage.setItem(OPP_KEY, JSON.stringify(oppEvents));
-      updateStatusBadge(true);
-    }catch(e){
-      updateStatusBadge(false);
-    }
-  }
+
+  function savePlays(){ syncGame(); }
+  function saveMeta(){ syncGame(); }
+  function saveOppEvents(){ syncGame(); }
 
   var warnedStorage = false;
 
-  function updateStatusBadge(ok){
+  function updateStatusBadge(ok, msg){
     var el = document.getElementById('saveStatus');
     if(!el) return;
     if(ok){
       el.textContent = '';
     } else {
-      el.textContent = 'Not saving on this device — use Export CSV often';
+      el.textContent = msg || 'Not saving — check connection';
       if(!warnedStorage){
         warnedStorage = true;
-        flashSaveWarning();
+        flashSaveWarning(msg);
       }
     }
   }
 
-  function flashSaveWarning(){
-    // Shown once per session, the first time a save fails — typically
-    // private/incognito browsing mode blocking storage. The chart and
-    // log you see stay fully usable in memory either way.
+  function flashSaveWarning(msg){
+    // Shown once per session, the first time a save fails.
     var inner = document.getElementById('undoInner');
-    document.getElementById('undoText').textContent = "Can't save on this device — export CSV to back up";
+    document.getElementById('undoText').textContent = msg || "Can't save — export CSV to back up";
     inner.classList.add('show');
     clearTimeout(undoTimer);
     undoTimer = setTimeout(function(){ inner.classList.remove('show'); }, 6000);
+  }
+
+  // ---------- coach sign-in ----------
+  function updateAuthUI(){
+    var el = document.getElementById('authBar');
+    if(!el) return;
+
+    if(!authReady){
+      el.innerHTML = '<div style="font-size:11px; color:var(--chalk-dim);">Connecting&hellip;</div>';
+      return;
+    }
+
+    if(isCoach){
+      el.innerHTML =
+        '<div style="display:flex; justify-content:space-between; align-items:center; font-size:12px;">' +
+        '<span style="color:var(--gain); font-weight:700;">&#10003; Signed in as coach</span>' +
+        '<span id="signOutLink" style="text-decoration:underline; cursor:pointer; color:var(--chalk-dim);">Sign out</span>' +
+        '</div>';
+      var so = document.getElementById('signOutLink');
+      if(so) so.addEventListener('click', function(){ window.FB.signOutCoach(); });
+      return;
+    }
+
+    if(!signInFormOpen){
+      el.innerHTML =
+        '<div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--chalk-dim);">' +
+        '<span>Viewing only</span>' +
+        '<span id="signInLink" style="text-decoration:underline; cursor:pointer; color:var(--gold);">Coach sign in</span>' +
+        '</div>';
+      var si = document.getElementById('signInLink');
+      if(si) si.addEventListener('click', function(){ signInFormOpen = true; updateAuthUI(); });
+    } else {
+      el.innerHTML =
+        '<div style="background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px;">' +
+        '<input id="authEmail" type="email" placeholder="Email" autocapitalize="none" autocorrect="off" style="width:100%; margin-bottom:6px; padding:8px; border-radius:6px; border:1px solid var(--line); background:var(--field-deep); color:var(--chalk); font-size:14px; box-sizing:border-box;">' +
+        '<input id="authPass" type="password" placeholder="Password" style="width:100%; margin-bottom:8px; padding:8px; border-radius:6px; border:1px solid var(--line); background:var(--field-deep); color:var(--chalk); font-size:14px; box-sizing:border-box;">' +
+        (signInError ? '<div style="color:var(--loss); font-size:11px; margin-bottom:8px;">' + signInError + '</div>' : '') +
+        '<div style="display:flex; gap:8px;">' +
+        '<div class="navbtn back" id="authCancel" style="flex:1; padding:8px; font-size:13px;">Cancel</div>' +
+        '<div class="navbtn primary" id="authSubmit" style="flex:1; padding:8px; font-size:13px;">Sign in</div>' +
+        '</div></div>';
+      document.getElementById('authCancel').addEventListener('click', function(){
+        signInFormOpen = false; signInError = ''; updateAuthUI();
+      });
+      document.getElementById('authSubmit').addEventListener('click', function(){
+        var email = document.getElementById('authEmail').value.trim();
+        var pass = document.getElementById('authPass').value;
+        if(!email || !pass){ signInError = 'Enter email and password'; updateAuthUI(); return; }
+        signInError = '';
+        window.FB.signIn(email, pass).then(function(){
+          signInFormOpen = false;
+          signInError = '';
+        }).catch(function(){
+          signInError = 'Sign in failed — check email/password';
+          updateAuthUI();
+        });
+      });
+    }
   }
 
   // ---------- render ----------
@@ -706,6 +810,20 @@ window.onerror = function(msg, url, line, col, err){
 
   function renderChart(){
     var main = document.getElementById('main');
+
+    if(!authReady){
+      main.innerHTML = '<div style="padding:60px 20px; text-align:center; color:var(--chalk-dim);">Connecting&hellip;</div>';
+      return;
+    }
+    if(!isCoach){
+      main.innerHTML =
+        '<div style="padding:50px 24px; text-align:center;">' +
+        '<div style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif; font-size:24px; color:var(--chalk); margin-bottom:10px;">Viewing only</div>' +
+        '<div style="color:var(--chalk-dim); font-size:14px;">Sign in as coach above to chart plays. You can still watch the log update live.</div>' +
+        '</div>';
+      return;
+    }
+
     var steps = getSteps();
     var stepName = steps[stepIdx];
     var html = '';
@@ -1102,31 +1220,33 @@ window.onerror = function(msg, url, line, col, err){
     html += statCard(rpoCount, 'RPO');
     html += '</div>';
 
-    html += '<div style="background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:12px; margin-bottom:16px;">';
-    html += '<div class="stepLabel" style="margin-bottom:10px;">End of quarter</div>';
-    html += '<div class="grid cols4" style="grid-template-columns:repeat(4,1fr); gap:8px;">';
-    ['1st','2nd','3rd','4th'].forEach(function(q, i){
-      html += '<div class="bigbtn small" data-act="quarter" data-val="' + (i+1) + '" style="padding:12px 4px; font-size:18px;">' + q + '</div>';
-    });
-    html += '</div>';
-    html += '</div>';
-
-    html += '<div style="background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:12px; margin-bottom:16px;">';
-    html += '<div class="stepLabel" style="margin-bottom:10px;">Opponent scored</div>';
-    html += '<div class="grid cols4" style="grid-template-columns:repeat(4,1fr); gap:8px;">';
-    [1,2,3,6].forEach(function(pts){
-      html += '<div class="bigbtn small" data-act="oppadd" data-val="' + pts + '" style="padding:12px 4px; font-size:20px;">+' + pts + '</div>';
-    });
-    html += '</div>';
-    if(oppEvents.length){
-      html += '<div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:6px;">';
-      oppEvents.forEach(function(e, i){
-        html += '<div class="chip filled" data-act="oppdel" data-idx="' + i + '" style="cursor:pointer;">+' + e.points + ' &#10005;</div>';
+    if(isCoach){
+      html += '<div style="background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:12px; margin-bottom:16px;">';
+      html += '<div class="stepLabel" style="margin-bottom:10px;">End of quarter</div>';
+      html += '<div class="grid cols4" style="grid-template-columns:repeat(4,1fr); gap:8px;">';
+      ['1st','2nd','3rd','4th'].forEach(function(q, i){
+        html += '<div class="bigbtn small" data-act="quarter" data-val="' + (i+1) + '" style="padding:12px 4px; font-size:18px;">' + q + '</div>';
       });
       html += '</div>';
-      html += '<div style="font-size:11px; color:var(--chalk-dim); margin-top:6px;">Tap a chip to remove it if you tapped the wrong score</div>';
+      html += '</div>';
+
+      html += '<div style="background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:12px; margin-bottom:16px;">';
+      html += '<div class="stepLabel" style="margin-bottom:10px;">Opponent scored</div>';
+      html += '<div class="grid cols4" style="grid-template-columns:repeat(4,1fr); gap:8px;">';
+      [1,2,3,6].forEach(function(pts){
+        html += '<div class="bigbtn small" data-act="oppadd" data-val="' + pts + '" style="padding:12px 4px; font-size:20px;">+' + pts + '</div>';
+      });
+      html += '</div>';
+      if(oppEvents.length){
+        html += '<div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:6px;">';
+        oppEvents.forEach(function(e, i){
+          html += '<div class="chip filled" data-act="oppdel" data-idx="' + i + '" style="cursor:pointer;">+' + e.points + ' &#10005;</div>';
+        });
+        html += '</div>';
+        html += '<div style="font-size:11px; color:var(--chalk-dim); margin-top:6px;">Tap a chip to remove it if you tapped the wrong score</div>';
+      }
+      html += '</div>';
     }
-    html += '</div>';
 
     html += '<div class="navbtn' + (reportOpen ? ' primary' : ' back') + '" id="reportBtn" style="margin-bottom:16px;">' + (reportOpen ? 'Hide Run Report' : 'Run Report') + '</div>';
     if(reportOpen){
@@ -1145,7 +1265,7 @@ window.onerror = function(msg, url, line, col, err){
           html += '<div style="flex:1; height:1px; background:var(--gold);"></div>';
           html += '<div style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif; font-size:16px; letter-spacing:1px; white-space:nowrap;">' + p.label + '</div>';
           html += '<div style="flex:1; height:1px; background:var(--gold);"></div>';
-          html += '<div class="del" data-idx="' + i + '" style="flex-shrink:0;">&#10005;</div>';
+          if(isCoach) html += '<div class="del" data-idx="' + i + '" style="flex-shrink:0;">&#10005;</div>';
           html += '</div>';
           return;
         }
@@ -1178,16 +1298,18 @@ window.onerror = function(msg, url, line, col, err){
         html += '<div class="main"><div class="playline">' + descParts.join(' &middot; ') + '</div>';
         html += '<div class="metaline">' + (metaParts.length ? metaParts.join(', ') : '&nbsp;') + '</div></div>';
         html += '<div class="yards ' + (p.yards>0?'pos':p.yards<0?'neg':'') + '">' + (p.yards>0?'+':'') + p.yards + '</div>';
-        html += '<div class="del" data-idx="' + i + '">&#10005;</div>';
+        if(isCoach) html += '<div class="del" data-idx="' + i + '">&#10005;</div>';
         html += '</div>';
       });
     }
 
     html += '<div class="logActions">';
-    if(clearArmed){
-      html += '<div class="navbtn" id="clearBtn" style="background:var(--loss); border-color:var(--loss); color:#fff;">Tap again to confirm</div>';
-    } else {
-      html += '<div class="navbtn back" id="clearBtn">Clear &amp; close game</div>';
+    if(isCoach){
+      if(clearArmed){
+        html += '<div class="navbtn" id="clearBtn" style="background:var(--loss); border-color:var(--loss); color:#fff;">Tap again to confirm</div>';
+      } else {
+        html += '<div class="navbtn back" id="clearBtn">Clear &amp; close game</div>';
+      }
     }
     html += '<div class="navbtn primary" id="exportBtn">Export CSV</div>';
     html += '</div>';
@@ -1231,7 +1353,7 @@ window.onerror = function(msg, url, line, col, err){
       });
     });
     var clearBtn = document.getElementById('clearBtn');
-    clearBtn.addEventListener('click', function(){
+    if(clearBtn) clearBtn.addEventListener('click', function(){
       if(!plays.length && !oppEvents.length) return;
       if(!clearArmed){
         clearArmed = true;
@@ -1346,7 +1468,12 @@ window.onerror = function(msg, url, line, col, err){
     }
   });
 
-  loadAll();
+  function waitForFirebase(cb){
+    if(window.FB){ cb(); } else { setTimeout(function(){ waitForFirebase(cb); }, 30); }
+  }
+  render(); // show "Connecting…" immediately while Firebase loads
+  updateAuthUI();
+  waitForFirebase(loadAll);
 })();
 </script>
 </body>
