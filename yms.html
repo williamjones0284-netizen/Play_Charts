@@ -321,12 +321,12 @@ window.onerror = function(msg, url, line, col, err){
 };
 (function(){
 
-  var FORMATIONS = ['Ace','Early','Late','Doubles','Ding','Tricky'];
-  var RUN_PLAYS = ['2','5'];
+  var FORMATIONS = ['Ace','Early','Late','Doubles','Ding','Tricky','Deuce','Deuce Rt','Deuce Lt','X-Wing','Z-Wing'];
+  var RUN_PLAYS = ['2','5','9'];
   var PASS_PLAYS = ['91','92','94','96','97'];
   var TAG_OPTIONS = ['Rattler','Switch','W','Grab','X','H','Y','Z','F','Go','Slant','Hitch','Smoke','Sluggo','Dig'];
   var RPO_PLAYS = ['12','15','22','25','42','72','75','65','62','45'];
-  var ALIGNMENT_OPTIONS = ['Flip','Deuce','H Back','Y Back','Z Back'];
+  var ALIGNMENT_OPTIONS = ['Flip','H Back','Y Back','Z Back'];
   var MOTION_OPTIONS = ['H Jet','Y Jet','X Jet','Z Jet'];
 
   var plays = [];
@@ -436,7 +436,7 @@ window.onerror = function(msg, url, line, col, err){
     // ever has one, treat it as 1 rather than letting it poison the
     // "reached the sticks" comparison below.
     var lastDistance = Math.max(1, last.distance);
-    if(last.outcome === 'TD' || last.outcome === 'TO'){
+    if(last.outcome === 'TD' || last.outcome === 'FUM' || last.outcome === 'INT' || last.outcome === 'TOD'){
       return {down:1, distance:10};
     }
     if(last.outcome === 'DPEN'){
@@ -963,7 +963,11 @@ window.onerror = function(msg, url, line, col, err){
       }
       html += '<div class="chipsRow">';
       html += '<div class="togglechip td ' + (current.outcome==='TD'?'on td':'') + '" data-act="outcome" data-val="TD">Touchdown</div>';
-      html += '<div class="togglechip to ' + (current.outcome==='TO'?'on to':'') + '" data-act="outcome" data-val="TO">Turnover</div>';
+      html += '</div>';
+      html += '<div class="chipsRow">';
+      html += '<div class="togglechip to ' + (current.outcome==='FUM'?'on to':'') + '" data-act="outcome" data-val="FUM">Fumble</div>';
+      html += '<div class="togglechip to ' + (current.outcome==='INT'?'on to':'') + '" data-act="outcome" data-val="INT">Interception</div>';
+      html += '<div class="togglechip to ' + (current.outcome==='TOD'?'on to':'') + '" data-act="outcome" data-val="TOD">TO on downs</div>';
       html += '</div>';
       html += '<div class="chipsRow">';
       html += '<div class="togglechip penO ' + (current.outcome==='OPEN'?'on penO':'') + '" data-act="outcome" data-val="OPEN">Offensive penalty<br><span style="font-weight:400; font-size:11px; opacity:0.85;">adds yards, hurts us</span></div>';
@@ -1296,7 +1300,9 @@ window.onerror = function(msg, url, line, col, err){
           }
           metaParts.push(tpLine);
         }
-        if(p.outcome === 'TO') metaParts.push('Turnover');
+        if(p.outcome === 'FUM') metaParts.push('Fumble');
+        if(p.outcome === 'INT') metaParts.push('Interception');
+        if(p.outcome === 'TOD') metaParts.push('Turnover on downs');
         if(p.outcome === 'OPEN') metaParts.push('Offensive penalty');
         if(p.outcome === 'DPEN') metaParts.push('Defensive penalty');
         html += '<div class="logrow">';
