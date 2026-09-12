@@ -1416,12 +1416,12 @@ window.onerror = function(msg, url, line, col, err){
   });
 
   function exportCSV(){
-    var headers = ['Down','Distance','Formation','Alignment','Motion','Category','Play','Direction','Tag','Yards','Outcome','2PT Formation','2PT Alignment','2PT Motion','2PT Category','2PT Play','2PT Direction','2PT Tag','2PT Result','YMS Score','Opp Score','Time'];
+    var headers = ['Down','Distance','Formation','Alignment','Motion','Play','Direction','Tag','Yards','Outcome','2PT Formation','2PT Alignment','2PT Motion','2PT Play','2PT Direction','2PT Tag','2PT Result','YMS Score','Opp Score','Time'];
     var rows = plays.map(function(p){
       if(p.isMarker){
-        return ['', '', '— ' + p.label + ' —', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', p.time];
+        return ['', '', '— ' + p.label + ' —', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', p.time];
       }
-      return [p.down, p.distance, p.formation, p.alignment, p.motion, p.category, p.play, p.direction, p.tag, p.yards, p.outcome, p.twoPtFormation, p.twoPtAlignment, p.twoPtMotion, p.twoPtCategory, p.twoPtPlay, p.twoPtDirection, p.twoPtTag, p.twoPtResult, p.usScore, p.oppScore, p.time];
+      return [p.down, p.distance, p.formation, p.alignment, p.motion, p.play, p.direction, p.tag, p.yards, p.outcome, p.twoPtFormation, p.twoPtAlignment, p.twoPtMotion, p.twoPtPlay, p.twoPtDirection, p.twoPtTag, p.twoPtResult, p.usScore, p.oppScore, p.time];
     });
 
     function csvRow(arr){

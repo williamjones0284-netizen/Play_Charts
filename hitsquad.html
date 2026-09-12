@@ -1030,11 +1030,7 @@ window.onerror = function(msg, url, line, col, err){
 
   function buildChips(steps){
     var order = [
-      ['formation', current.formation],
-      ['motion', current.motion],
-      ['category', current.category],
-      ['play', current.play],
-      ['direction', current.direction]
+      ['formation', current.formation]
     ];
     var out = '';
     order.forEach(function(pair){
@@ -1049,6 +1045,19 @@ window.onerror = function(msg, url, line, col, err){
         out += '<div class="chip filled">' + a + '</div>';
       });
     }
+    var order2 = [
+      ['motion', current.motion],
+      ['category', current.category],
+      ['play', current.play],
+      ['direction', current.direction]
+    ];
+    order2.forEach(function(pair){
+      if(steps.indexOf(pair[0]) === -1) return;
+      var val = pair[1];
+      if(!val) return;
+      var label = val;
+      out += '<div class="chip filled">' + label + '</div>';
+    });
     if(steps.indexOf('tag') !== -1 && current.tag && current.tag.length){
       current.tag.forEach(function(t){
         out += '<div class="chip filled">' + t + '</div>';
@@ -1452,12 +1461,12 @@ window.onerror = function(msg, url, line, col, err){
   });
 
   function exportCSV(){
-    var headers = ['Down','Distance','Formation','Alignment','Motion','Category','Play','Direction','Tag','Yards','Outcome','2PT Formation','2PT Alignment','2PT Motion','2PT Category','2PT Play','2PT Direction','2PT Tag','2PT Result','HSE Score','Opp Score','Time'];
+    var headers = ['Down','Distance','Formation','Alignment','Motion','Play','Direction','Tag','Yards','Outcome','2PT Formation','2PT Alignment','2PT Motion','2PT Play','2PT Direction','2PT Tag','2PT Result','HSE Score','Opp Score','Time'];
     var rows = plays.map(function(p){
       if(p.isMarker){
-        return ['', '', '— ' + p.label + ' —', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', p.time];
+        return ['', '', '— ' + p.label + ' —', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', p.time];
       }
-      return [p.down, p.distance, p.formation, p.alignment, p.motion, p.category, p.play, p.direction, p.tag, p.yards, p.outcome, p.twoPtFormation, p.twoPtAlignment, p.twoPtMotion, p.twoPtCategory, p.twoPtPlay, p.twoPtDirection, p.twoPtTag, p.twoPtResult, p.usScore, p.oppScore, p.time];
+      return [p.down, p.distance, p.formation, p.alignment, p.motion, p.play, p.direction, p.tag, p.yards, p.outcome, p.twoPtFormation, p.twoPtAlignment, p.twoPtMotion, p.twoPtPlay, p.twoPtDirection, p.twoPtTag, p.twoPtResult, p.usScore, p.oppScore, p.time];
     });
 
     function csvRow(arr){
