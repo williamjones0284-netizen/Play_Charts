@@ -316,12 +316,12 @@ window.onerror = function(msg, url, line, col, err){
 };
 (function(){
 
-  var FORMATIONS = ['Ace','Early','Late','Doubles','Ding','Tricky','Deuce','Deuce Rt','Deuce Lt','X-Wing','Z-Wing'];
+  var FORMATIONS = ['Ace','Early','Late','Doubles','Ding','Tricky','X-Wing','Z-Wing'];
   var RUN_PLAYS = ['2','5','9'];
   var PASS_PLAYS = ['91','92','94','96','97'];
   var TAG_OPTIONS = ['Rattler','Switch','W','Grab','X','H','Y','Z','F','Go','Slant','Hitch','Smoke','Sluggo','Dig'];
   var RPO_PLAYS = ['12','15','22','25','42','72','75','65','62','45'];
-  var ALIGNMENT_OPTIONS = ['Flip','H Back','Y Back','Z Back'];
+  var ALIGNMENT_OPTIONS = ['Flip','Deuce','H Back','Y Back','Z Back'];
   var MOTION_OPTIONS = ['H Jet','Y Jet','X Jet','Z Jet'];
 
   var plays = [];
@@ -349,7 +349,7 @@ window.onerror = function(msg, url, line, col, err){
   function freshPlay(keepFormation){
     return {
       formation: keepFormation ? current.formation : null,
-      alignment: keepFormation ? current.alignment : null,
+      alignment: keepFormation ? current.alignment : [],
       motion: keepFormation ? current.motion : null,
       category: null,
       play: null,
@@ -366,7 +366,7 @@ window.onerror = function(msg, url, line, col, err){
   function freshTwoPt(){
     return {
       formation: null,
-      alignment: null,
+      alignment: [],
       motion: null,
       category: null,
       play: null,
@@ -506,7 +506,7 @@ window.onerror = function(msg, url, line, col, err){
     html += '<div class="stepLabel" style="margin-top:2px;">2-point attempt</div>';
     var chips = '';
     if(tp.formation) chips += tpChip(tp.formation);
-    if(tp.alignment) chips += tpChip(tp.alignment);
+    if(tp.alignment && tp.alignment.length) tp.alignment.forEach(function(a){ chips += tpChip(a); });
     if(tp.motion) chips += tpChip(tp.motion);
     if(tp.category) chips += tpChip(tp.category);
     if(tp.play) chips += tpChip(tp.play);
@@ -524,12 +524,17 @@ window.onerror = function(msg, url, line, col, err){
     }
 
     else if(stepName === 'alignment'){
-      html += '<div class="stepLabel">Alignment <span style="opacity:0.6;font-weight:400; text-transform:none; letter-spacing:0;">(skip for Normal)</span></div>';
+      html += '<div class="stepLabel">Alignment <span style="opacity:0.6;font-weight:400; text-transform:none; letter-spacing:0;">(optional, pick as many as apply)</span></div>';
       html += '<div class="grid cols3" style="grid-template-columns:repeat(3,1fr);">';
       ALIGNMENT_OPTIONS.forEach(function(a){
-        html += bigBtn(a, a === tp.alignment, 'picktp3', 'alignment', a, 'small');
+        html += bigBtn(a, tp.alignment.indexOf(a) !== -1, 'togglealigntp', 'alignment', a, 'small');
       });
       html += '</div>';
+      if(tp.alignment.length){
+        html += '<div class="grid cols2" style="margin-top:10px;">';
+        html += '<div class="bigbtn skip" data-act="clearaligntp">Clear alignment</div>';
+        html += '</div>';
+      }
     }
 
     else if(stepName === 'motion'){
@@ -630,6 +635,20 @@ window.onerror = function(msg, url, line, col, err){
     document.querySelectorAll('[data-act="cleartagtp"]').forEach(function(el){
       el.addEventListener('click', function(){
         current.twoPt.tag = [];
+        render();
+      });
+    });
+    document.querySelectorAll('[data-act="togglealigntp"]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var val = el.dataset.val;
+        var i = current.twoPt.alignment.indexOf(val);
+        if(i === -1) current.twoPt.alignment.push(val); else current.twoPt.alignment.splice(i, 1);
+        render();
+      });
+    });
+    document.querySelectorAll('[data-act="clearaligntp"]').forEach(function(el){
+      el.addEventListener('click', function(){
+        current.twoPt.alignment = [];
         render();
       });
     });
@@ -853,12 +872,17 @@ window.onerror = function(msg, url, line, col, err){
     }
 
     else if(stepName === 'alignment'){
-      html += '<div class="stepLabel">Alignment <span style="opacity:0.6;font-weight:400; text-transform:none; letter-spacing:0;">(skip for Normal)</span></div>';
+      html += '<div class="stepLabel">Alignment <span style="opacity:0.6;font-weight:400; text-transform:none; letter-spacing:0;">(optional, pick as many as apply)</span></div>';
       html += '<div class="grid cols3" style="grid-template-columns:repeat(3,1fr);">';
       ALIGNMENT_OPTIONS.forEach(function(a){
-        html += bigBtn(a, a === current.alignment, 'pick', 'alignment', a, 'small');
+        html += bigBtn(a, current.alignment.indexOf(a) !== -1, 'togglealign', 'alignment', a, 'small');
       });
       html += '</div>';
+      if(current.alignment.length){
+        html += '<div class="grid cols2" style="margin-top:10px;">';
+        html += '<div class="bigbtn skip" data-act="clearalign">Clear alignment</div>';
+        html += '</div>';
+      }
     }
 
     else if(stepName === 'motion'){
@@ -1007,7 +1031,6 @@ window.onerror = function(msg, url, line, col, err){
   function buildChips(steps){
     var order = [
       ['formation', current.formation],
-      ['alignment', current.alignment],
       ['motion', current.motion],
       ['category', current.category],
       ['play', current.play],
@@ -1021,6 +1044,11 @@ window.onerror = function(msg, url, line, col, err){
       var label = val;
       out += '<div class="chip filled">' + label + '</div>';
     });
+    if(steps.indexOf('alignment') !== -1 && current.alignment && current.alignment.length){
+      current.alignment.forEach(function(a){
+        out += '<div class="chip filled">' + a + '</div>';
+      });
+    }
     if(steps.indexOf('tag') !== -1 && current.tag && current.tag.length){
       current.tag.forEach(function(t){
         out += '<div class="chip filled">' + t + '</div>';
@@ -1050,6 +1078,20 @@ window.onerror = function(msg, url, line, col, err){
     document.querySelectorAll('[data-act="cleartag"]').forEach(function(el){
       el.addEventListener('click', function(){
         current.tag = [];
+        render();
+      });
+    });
+    document.querySelectorAll('[data-act="togglealign"]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var val = el.dataset.val;
+        var i = current.alignment.indexOf(val);
+        if(i === -1) current.alignment.push(val); else current.alignment.splice(i, 1);
+        render();
+      });
+    });
+    document.querySelectorAll('[data-act="clearalign"]').forEach(function(el){
+      el.addEventListener('click', function(){
+        current.alignment = [];
         render();
       });
     });
@@ -1117,7 +1159,7 @@ window.onerror = function(msg, url, line, col, err){
       var last = rp[rp.length - 1];
       if(!last) return;
       current.formation = last.formation;
-      current.alignment = last.alignment || null;
+      current.alignment = last.alignment ? last.alignment.split(', ') : [];
       current.motion = last.motion || null;
       current.category = last.category;
       current.play = last.play;
@@ -1133,7 +1175,7 @@ window.onerror = function(msg, url, line, col, err){
     var tp = current.twoPt || freshTwoPt();
     var entry = {
       formation: current.formation,
-      alignment: current.alignment || '',
+      alignment: (current.alignment || []).join(', '),
       motion: current.motion || '',
       category: current.category,
       play: current.play,
@@ -1144,7 +1186,7 @@ window.onerror = function(msg, url, line, col, err){
       yards: current.yards,
       outcome: current.outcome || '',
       twoPtFormation: tp.formation || '',
-      twoPtAlignment: tp.alignment || '',
+      twoPtAlignment: (tp.alignment || []).join(', '),
       twoPtMotion: tp.motion || '',
       twoPtCategory: tp.category || '',
       twoPtPlay: tp.play || '',
