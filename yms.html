@@ -301,6 +301,7 @@
     <div class="tabs">
       <div class="tab active" data-tab="chart">Chart</div>
       <div class="tab" data-tab="log">Log <span class="count" id="tabCount">0</span></div>
+      <div class="tab" data-tab="hurry">Hurry-Up</div>
     </div>
     <div id="saveStatus" style="font-size:10px; color:#D6685A; text-align:right; padding:4px 2px 8px 2px; min-height:14px;"></div>
     <div id="authBar" style="padding:0 2px 10px 2px;"></div>
@@ -325,6 +326,28 @@ window.onerror = function(msg, url, line, col, err){
   var RUN_PLAYS = ['2','5','9'];
   var PASS_PLAYS = ['91','92','94','96','97'];
   var TAG_OPTIONS = ['Rattler','Switch','W','Grab','X','H','Y','Z','F','Go','Slant','Hitch','Smoke','Sluggo','Dig','Q','Lead','Lucky','Corner','Post'];
+
+  // Hurry-up wristband calls — each maps directly to a full play so tapping
+  // one jumps straight to down & distance, skipping formation/motion/play
+  // selection entirely.
+  var HURRY_UP_CALLS = [
+    {num:1,  name:'Gators',    formation:'Deuce',    motion:'Z Jet', category:'Run',  play:'2',  direction:'Up',   tags:[]},
+    {num:2,  name:'Bama',      formation:'Deuce',    motion:null,    category:'Run',  play:'5',  direction:'Up',   tags:[]},
+    {num:3,  name:'Florida',   formation:'Deuce',    motion:null,    category:'Run',  play:'2',  direction:'Up',   tags:['Q','Lead']},
+    {num:4,  name:'Noles',     formation:'Deuce',    motion:'Z Jet', category:'Run',  play:'2',  direction:'Down', tags:['Q','Lead']},
+    {num:5,  name:'Owls',      formation:'Early',    motion:null,    category:'Run',  play:'2',  direction:'Up',   tags:[]},
+    {num:6,  name:'Knights',   formation:'Deuce',    motion:null,    category:'Pass', play:'91', direction:null,   tags:[]},
+    {num:7,  name:'Bulls',     formation:'Deuce',    motion:null,    category:'Pass', play:'94', direction:null,   tags:[]},
+    {num:8,  name:'Ohio',      formation:'Late',     motion:null,    category:'Run',  play:'2',  direction:'Down', tags:[]},
+    {num:9,  name:'Buckeyes',  formation:'X-Wing',   motion:null,    category:'Run',  play:'2',  direction:'Up',   tags:[]},
+    {num:10, name:'Rebels',    formation:'X-Wing',   motion:'X Jet', category:'Run',  play:'2',  direction:'Up',   tags:[]},
+    {num:11, name:'Lions',     formation:'Z-Wing',   motion:null,    category:'Run',  play:'2',  direction:'Up',   tags:[]},
+    {num:12, name:'Cowboys',   formation:'Z-Wing',   motion:'Z Jet', category:'Run',  play:'2',  direction:'Up',   tags:['Q','Lead']},
+    {num:13, name:'Eagles',    formation:'Deuce Rt', motion:null,    category:'Run',  play:'5',  direction:'Up',   tags:[]},
+    {num:14, name:'Warriors',  formation:'Deuce Rt', motion:null,    category:'Run',  play:'2',  direction:'Up',   tags:[]},
+    {num:15, name:'Giants',    formation:'Deuce Rt', motion:null,    category:'Pass', play:'91', direction:null,   tags:[]},
+    {num:16, name:'Cardinals', formation:'Deuce Rt', motion:null,    category:'Pass', play:'94', direction:null,   tags:[]}
+  ];
   var RPO_PLAYS = ['12','15','22','25','42','72','75','65','62','45'];
   var ALIGNMENT_OPTIONS = ['Flip','H Back','Y Back','Z Back'];
   var MOTION_OPTIONS = ['H Jet','Y Jet','X Jet','Z Jet'];
@@ -811,7 +834,51 @@ window.onerror = function(msg, url, line, col, err){
       t.classList.toggle('active', t.dataset.tab === activeTab);
     });
     if(activeTab === 'chart') renderChart();
+    else if(activeTab === 'hurry') renderHurryUp();
     else renderLog();
+  }
+
+  function renderHurryUp(){
+    var main = document.getElementById('main');
+
+    if(!authReady){
+      main.innerHTML = '<div style="padding:60px 20px; text-align:center; color:var(--chalk-dim);">Connecting&hellip;</div>';
+      return;
+    }
+    if(!isCoach){
+      main.innerHTML =
+        '<div style="padding:50px 24px; text-align:center;">' +
+        '<div style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif; font-size:24px; color:var(--chalk); margin-bottom:10px;">Viewing only</div>' +
+        '<div style="color:var(--chalk-dim); font-size:14px;">Sign in as coach above to use Hurry-Up calls.</div>' +
+        '</div>';
+      return;
+    }
+
+    var html = '<div class="stepLabel" style="margin-bottom:12px;">Tap a call &mdash; goes straight to down &amp; distance</div>';
+    html += '<div class="grid cols2">';
+    HURRY_UP_CALLS.forEach(function(c){
+      html += '<div class="bigbtn small" data-act="hurryup" data-num="' + c.num + '" style="font-size:18px; padding:16px 8px;">' + c.num + ' &mdash; ' + c.name + '</div>';
+    });
+    html += '</div>';
+    main.innerHTML = html;
+
+    document.querySelectorAll('[data-act="hurryup"]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var call = HURRY_UP_CALLS.filter(function(c){ return c.num === parseInt(el.dataset.num, 10); })[0];
+        if(!call) return;
+        current = freshPlay(false);
+        current.formation = call.formation;
+        current.motion = call.motion;
+        current.category = call.category;
+        current.play = call.play;
+        current.direction = call.direction;
+        current.tag = call.tags.slice();
+        var steps = getSteps();
+        stepIdx = steps.indexOf('downdistance');
+        activeTab = 'chart';
+        render();
+      });
+    });
   }
 
   function renderChart(){
